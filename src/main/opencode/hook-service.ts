@@ -2,7 +2,6 @@ import { getAppEnvironment } from '../../shared/app-environment'
 import { join } from 'node:path'
 import {
   existsSync,
-  lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -23,6 +22,7 @@ import { getStatusPluginOwnershipSource } from './status-plugin-ownership-source
 import { getStatusPluginLifecycleSource } from './status-plugin-lifecycle-source'
 import { getStatusPluginFactorySource } from './status-plugin-factory-source'
 import { resolveOpenCodeConfigDirectory } from '../../shared/opencode-config-directory'
+import { isInstalledOpenCodePluginCurrent } from '../../shared/opencode-installed-plugin'
 
 const ORCA_OPENCODE_PLUGIN_FILE = 'orca-opencode-status.js'
 const OPENCODE_LEGACY_HOOKS_DIR = 'opencode-hooks'
@@ -50,17 +50,6 @@ function isUsableId(id: string): boolean {
 function toSafeDirName(id: string): string {
   // Why: 32 hex chars (128 bits) makes collisions negligible and stays filesystem-portable (no base64 padding or `/`).
   return createHash('sha256').update(id).digest('hex').slice(0, 32)
-}
-
-// Why: OpenCode 2 hot-reloads every plugin when its plugins dir changes, so rewriting identical
-// bytes on each PTY spawn restarted every plugin in the shared server mid-turn.
-function isCurrentPluginFile(pluginPath: string, source: string): boolean {
-  try {
-    // lstat: a mirrored symlink is the user's file, never Orca's, even when the bytes match.
-    return lstatSync(pluginPath).isFile() && readFileSync(pluginPath, 'utf8') === source
-  } catch {
-    return false
-  }
 }
 
 // Both major versions install as `opencode`; let the loader choose server() or setup().
@@ -270,7 +259,7 @@ export class OpenCodeHookService {
     mkdirSync(pluginsDir, { recursive: true })
     const pluginPath = join(pluginsDir, this.pluginFileName)
     const source = this.pluginSource()
-    if (isCurrentPluginFile(pluginPath, source)) {
+    if (isInstalledOpenCodePluginCurrent(pluginPath, source)) {
       return
     }
     try {
@@ -286,7 +275,7 @@ export class OpenCodeHookService {
     mkdirSync(pluginsDir, { recursive: true })
     const pluginPath = join(pluginsDir, this.pluginFileName)
     const source = this.pluginSource()
-    if (!isCurrentPluginFile(pluginPath, source)) {
+    if (!isInstalledOpenCodePluginCurrent(pluginPath, source)) {
       writeFileSync(pluginPath, source)
     }
   }
